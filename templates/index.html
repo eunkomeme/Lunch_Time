@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>오늘 오장?</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: sans-serif;
+      background: #f0f4f8;
+      min-height: 100dvh;
+      padding: 16px;
+      color: #222;
+    }
+
+    h1 { font-size: 1.5rem; text-align: center; margin-bottom: 4px; }
+    .subtitle { text-align: center; color: #888; font-size: 0.85rem; margin-bottom: 20px; }
+
+    /* ── 로비 ── */
+    #lobby {
+      max-width: 360px;
+      margin: 60px auto 0;
+      background: white;
+      border-radius: 16px;
+      padding: 28px 24px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    #lobby h2 { font-size: 1.2rem; text-align: center; }
+
+    #lobby input {
+      width: 100%;
+      padding: 12px;
+      border: 1.5px solid #ddd;
+      border-radius: 10px;
+      font-size: 1rem;
+      outline: none;
+      text-align: center;
+    }
+
+    .emoji-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+
+    .emoji-btn {
+      font-size: 1.6rem;
+      padding: 6px;
+      background: #f5f5f5;
+      border: 2px solid transparent;
+      border-radius: 10px;
+      cursor: pointer;
+      text-align: center;
+      transition: border-color 0.15s;
+    }
+    .emoji-btn.selected { border-color: #4a90e2; background: #e8f0fc; }
+
+    #join-btn {
+      width: 100%;
+      padding: 13px;
+      background: #4a90e2;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    #join-btn:disabled { opacity: 0.4; }
+
+    /* ── 메인 ── */
+    #main { display: none; max-width: 480px; margin: 0 auto; }
+
+    .section {
+      background: white;
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+    }
+
+    .section-title {
+      font-size: 0.75rem;
+      color: #888;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* 오장 토글 */
+    #toggle-btn {
+      width: 100%;
+      padding: 18px;
+      font-size: 1.3rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #toggle-btn.going    { background: #d4edda; color: #155724; }
+    #toggle-btn.notgoing { background: #f8d7da; color: #721c24; }
+
+    /* 식당 선택 */
+    #restaurant-section { display: none; }
+
+    .restaurant-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .rest-btn {
+      padding: 10px 6px;
+      font-size: 0.85rem;
+      background: #f5f5f5;
+      border: 2px solid transparent;
+      border-radius: 10px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .rest-btn.selected { border-color: #4a90e2; background: #e8f0fc; font-weight: bold; }
+
+    /* 메뉴 입력 */
+    #menu-section { display: none; }
+
+    #menu-input {
+      width: 100%;
+      padding: 11px;
+      border: 1.5px solid #ddd;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      outline: none;
+    }
+
+    /* 참가자 목록 */
+    #player-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+    .player-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: #f9f9f9;
+      border-radius: 10px;
+    }
+
+    .player-emoji { font-size: 2rem; }
+
+    .player-info { flex: 1; }
+    .player-name { font-weight: bold; font-size: 0.95rem; }
+    .player-detail { font-size: 0.8rem; color: #666; margin-top: 2px; }
+
+    .badge {
+      font-size: 0.75rem;
+      padding: 3px 9px;
+      border-radius: 20px;
+      font-weight: bold;
+    }
+    .badge.going    { background: #d4edda; color: #155724; }
+    .badge.notgoing { background: #f8d7da; color: #721c24; }
+
+    #empty-msg { text-align: center; color: #aaa; font-size: 0.9rem; padding: 20px 0; }
+  </style>
+</head>
+<body>
+
+<!-- 로비 -->
+<div id="lobby">
+  <h2>🍱 오늘 오장?</h2>
+  <input id="name-input" type="text" placeholder="닉네임 입력" maxlength="12" />
+  <div>
+    <div class="section-title" style="margin-bottom:8px">캐릭터 선택</div>
+    <div class="emoji-grid" id="emoji-grid">
+      <!-- JS로 생성 -->
+    </div>
+  </div>
+  <button id="join-btn" disabled onclick="joinApp()">입장하기</button>
+</div>
+
+<!-- 메인 -->
+<div id="main">
+  <h1>🍱 오늘 오장?</h1>
+  <p class="subtitle">실시간 점심 현황</p>
+
+  <!-- 오장 토글 -->
+  <div class="section">
+    <div class="section-title">나의 상태</div>
+    <button id="toggle-btn" class="notgoing" onclick="toggleGoing()">
+      ❌ 안 가
+    </button>
+  </div>
+
+  <!-- 식당 선택 -->
+  <div class="section" id="restaurant-section">
+    <div class="section-title">어디로?</div>
+    <div class="restaurant-grid" id="restaurant-grid">
+      <!-- JS로 생성 -->
+    </div>
+  </div>
+
+  <!-- 메뉴 입력 -->
+  <div class="section" id="menu-section">
+    <div class="section-title">오늘 메뉴</div>
+    <input id="menu-input" type="text" placeholder="ex) 김치찌개, 파스타..." maxlength="30" />
+  </div>
+
+  <!-- 참가자 목록 -->
+  <div class="section">
+    <div class="section-title">참가자 현황</div>
+    <ul id="player-list"></ul>
+    <div id="empty-msg">아직 아무도 없어요</div>
+  </div>
+</div>
+
+<script>
+  const socket = io();
+  const EMOJIS = ["🐱","🐶","🐹","🐻","🦊","🐸","🐼","🦁","🐯","🐧"];
+  const RESTAURANTS = ["투게더홀","패밀리홀","R3","R4","R5"];
+
+  let myName = "";
+  let myEmoji = "";
+  let going = false;
+  let restaurant = "";
+  let composing = false;  // IME 조합 상태 직접 추적
+
+  // ── 이모지 버튼 생성 ──
+  const emojiGrid = document.getElementById("emoji-grid");
+  EMOJIS.forEach(em => {
+    const btn = document.createElement("button");
+    btn.className = "emoji-btn";
+    btn.textContent = em;
+    btn.onclick = () => {
+      document.querySelectorAll(".emoji-btn").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      myEmoji = em;
+      updateJoinBtn();
+    };
+    emojiGrid.appendChild(btn);
+  });
+
+  // ── 식당 버튼 생성 ──
+  const restGrid = document.getElementById("restaurant-grid");
+  RESTAURANTS.forEach(r => {
+    const btn = document.createElement("button");
+    btn.className = "rest-btn";
+    btn.textContent = r;
+    btn.onclick = () => {
+      document.querySelectorAll(".rest-btn").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      restaurant = r;
+      sendUpdate();
+    };
+    restGrid.appendChild(btn);
+  });
+
+  function updateJoinBtn() {
+    const name = document.getElementById("name-input").value.trim();
+    document.getElementById("join-btn").disabled = !(name && myEmoji);
+  }
+
+  // ── IME 안전한 Enter 처리 ──
+  // isComposing 대신 compositionstart/end 직접 추적 (브라우저 호환성 문제 회피)
+  const nameInput = document.getElementById("name-input");
+  nameInput.addEventListener("compositionstart", () => composing = true);
+  nameInput.addEventListener("compositionend",   () => composing = false);
+  nameInput.addEventListener("input", updateJoinBtn);
+  nameInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !composing) joinApp();
+  });
+
+  const menuInput = document.getElementById("menu-input");
+  menuInput.addEventListener("compositionstart", () => composing = true);
+  menuInput.addEventListener("compositionend",   () => composing = false);
+  menuInput.addEventListener("input", () => sendUpdate());
+
+  // ── 입장 ──
+  function joinApp() {
+    const name = nameInput.value.trim();
+    if (!name || !myEmoji) return;
+    myName = name;
+
+    document.getElementById("lobby").style.display = "none";
+    document.getElementById("main").style.display = "block";
+
+    socket.emit("join", { name: myName, emoji: myEmoji });
+  }
+
+  // ── 오장 토글 ──
+  function toggleGoing() {
+    going = !going;
+    const btn = document.getElementById("toggle-btn");
+    if (going) {
+      btn.textContent = "✅ 오장!";
+      btn.className = "going";
+      document.getElementById("restaurant-section").style.display = "block";
+      document.getElementById("menu-section").style.display = "block";
+    } else {
+      btn.textContent = "❌ 안 가";
+      btn.className = "notgoing";
+      document.getElementById("restaurant-section").style.display = "none";
+      document.getElementById("menu-section").style.display = "none";
+      restaurant = "";
+      document.querySelectorAll(".rest-btn").forEach(b => b.classList.remove("selected"));
+    }
+    sendUpdate();
+  }
+
+  // ── 상태 서버 전송 ──
+  function sendUpdate() {
+    socket.emit("update", {
+      going,
+      restaurant,
+      menu: document.getElementById("menu-input").value.trim(),
+    });
+  }
+
+  // ── 참가자 목록 수신 ──
+  socket.on("player_list", ({ players }) => {
+    const list = document.getElementById("player-list");
+    const empty = document.getElementById("empty-msg");
+    list.innerHTML = "";
+
+    if (players.length === 0) {
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+
+    players.forEach(p => {
+      const li = document.createElement("li");
+      li.className = "player-card";
+
+      const detail = [
+        p.going && p.restaurant ? p.restaurant : null,
+        p.going && p.menu       ? p.menu       : null,
+      ].filter(Boolean).join(" · ") || "";
+
+      li.innerHTML = `
+        <div class="player-emoji">${p.emoji}</div>
+        <div class="player-info">
+          <div class="player-name">${p.name}</div>
+          ${detail ? `<div class="player-detail">${detail}</div>` : ""}
+        </div>
+        <div class="badge ${p.going ? "going" : "notgoing"}">
+          ${p.going ? "오장 ✅" : "안 가 ❌"}
+        </div>
+      `;
+      list.appendChild(li);
+    });
+  });
+</script>
+
+</body>
+</html>
