@@ -26,7 +26,10 @@ def on_join(data):
         "name": data["name"],
         "emoji": data["emoji"],
         "going": False,
+        "meal_time": "regular",
+        "meet_time": "11:50",
         "restaurant": "",
+        "custom_place": "",
         "menu": "",
     }
     broadcast()
@@ -37,7 +40,10 @@ def on_update(data):
     sid = request.sid
     if sid in players:
         players[sid]["going"]      = data.get("going", False)
+        players[sid]["meal_time"]  = data.get("meal_time", "regular")
+        players[sid]["meet_time"]  = data.get("meet_time", "11:50")
         players[sid]["restaurant"] = data.get("restaurant", "")
+        players[sid]["custom_place"] = data.get("custom_place", "")
         players[sid]["menu"]       = data.get("menu", "")
         broadcast()
 
