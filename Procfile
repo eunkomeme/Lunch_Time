@@ -1,1 +1,1 @@
-web: gunicorn --worker-class geventwebsocket.handler.WebSocketHandler -w 1 server:app
+web: gunicorn --worker-class eventlet -w 1 server:app
