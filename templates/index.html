@@ -44,6 +44,26 @@
       text-align: center;
     }
 
+    .name-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .name-btn {
+      padding: 10px 6px;
+      font-size: 0.9rem;
+      background: #f5f5f5;
+      border: 2px solid transparent;
+      border-radius: 10px;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .name-btn.selected { border-color: #4a90e2; background: #e8f0fc; font-weight: bold; }
+
+    #name-input-wrap { display: none; }
+
     .emoji-grid {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
@@ -107,6 +127,41 @@
     #toggle-btn.going    { background: #d4edda; color: #155724; }
     #toggle-btn.notgoing { background: #f8d7da; color: #721c24; }
 
+    /* 식사 시간 */
+    #time-section { display: none; }
+
+    .time-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .time-btn {
+      padding: 11px 6px;
+      font-size: 0.9rem;
+      background: #f5f5f5;
+      border: 2px solid transparent;
+      border-radius: 10px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .time-btn.selected { border-color: #4a90e2; background: #e8f0fc; font-weight: bold; }
+
+    #time-input-wrap {
+      display: none;
+      margin-top: 10px;
+    }
+
+    #time-input {
+      width: 100%;
+      padding: 11px;
+      border: 1.5px solid #ddd;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      outline: none;
+      background: #fff;
+    }
+
     /* 식당 선택 */
     #restaurant-section { display: none; }
 
@@ -126,6 +181,16 @@
       text-align: center;
     }
     .rest-btn.selected { border-color: #4a90e2; background: #e8f0fc; font-weight: bold; }
+
+    #custom-place-input {
+      width: 100%;
+      padding: 11px;
+      border: 1.5px solid #ddd;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      outline: none;
+      margin-top: 10px;
+    }
 
     /* 메뉴 입력 */
     #menu-section { display: none; }
@@ -174,7 +239,15 @@
 <!-- 로비 -->
 <div id="lobby">
   <h2>🍱 오늘 오장?</h2>
-  <input id="name-input" type="text" placeholder="닉네임 입력" maxlength="12" />
+  <div>
+    <div class="section-title" style="margin-bottom:8px">이름 선택</div>
+    <div class="name-grid" id="name-grid">
+      <!-- JS로 생성 -->
+    </div>
+  </div>
+  <div id="name-input-wrap">
+    <input id="name-input" type="text" placeholder="그 외 인물 이름 입력" maxlength="12" />
+  </div>
   <div>
     <div class="section-title" style="margin-bottom:8px">캐릭터 선택</div>
     <div class="emoji-grid" id="emoji-grid">
@@ -197,12 +270,24 @@
     </button>
   </div>
 
+  <!-- 식사 시간 -->
+  <div class="section" id="time-section">
+    <div class="section-title">언제 먹을까?</div>
+    <div class="time-grid" id="time-grid">
+      <!-- JS로 생성 -->
+    </div>
+    <div id="time-input-wrap">
+      <input id="time-input" type="time" value="11:40" />
+    </div>
+  </div>
+
   <!-- 식당 선택 -->
   <div class="section" id="restaurant-section">
     <div class="section-title">어디로?</div>
     <div class="restaurant-grid" id="restaurant-grid">
       <!-- JS로 생성 -->
     </div>
+    <input id="custom-place-input" type="text" placeholder="다른 장소라면 직접 입력 (ex. 외부 식당)" maxlength="30" />
   </div>
 
   <!-- 메뉴 입력 -->
@@ -221,14 +306,60 @@
 
 <script>
   const socket = io();
+  const PRESET_NAMES = ["은송", "영은", "무연"];
+  const CUSTOM_NAME_VALUE = "__custom__";
   const EMOJIS = ["🐱","🐶","🐹","🐻","🦊","🐸","🐼","🦁","🐯","🐧"];
+  const DEFAULT_MEET_TIME = "11:50"; // 평소(오장) 시간
+  const MEAL_TIMES = [
+    { label: "평소 11:50 (오장)", value: "regular" },
+    { label: "조금 일찍 (시간 선택)", value: "early" },
+  ];
   const RESTAURANTS = ["투게더홀","패밀리홀","R3","R4","R5"];
 
   let myName = "";
+  let selectedName = "";
   let myEmoji = "";
   let going = false;
+  let mealTime = "regular";
+  let meetTime = DEFAULT_MEET_TIME;
   let restaurant = "";
+  let customPlace = "";
   let composing = false;  // IME 조합 상태 직접 추적
+
+  // ── 이름 버튼 생성 ──
+  const nameGrid = document.getElementById("name-grid");
+  const nameInputWrap = document.getElementById("name-input-wrap");
+  const nameInput = document.getElementById("name-input");
+
+  function updateNameUI() {
+    nameInputWrap.style.display = selectedName === CUSTOM_NAME_VALUE ? "block" : "none";
+  }
+
+  function getChosenName() {
+    if (selectedName === CUSTOM_NAME_VALUE) return nameInput.value.trim();
+    return selectedName;
+  }
+
+  [...PRESET_NAMES, "직접 입력"].forEach(name => {
+    const isCustom = name === "직접 입력";
+    const value = isCustom ? CUSTOM_NAME_VALUE : name;
+    const btn = document.createElement("button");
+    btn.className = "name-btn";
+    btn.textContent = name;
+    btn.onclick = () => {
+      document.querySelectorAll(".name-btn").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      selectedName = value;
+      if (!isCustom) {
+        nameInput.value = "";
+      }
+      updateNameUI();
+      updateJoinBtn();
+    };
+    nameGrid.appendChild(btn);
+  });
+
+  updateNameUI();
 
   // ── 이모지 버튼 생성 ──
   const emojiGrid = document.getElementById("emoji-grid");
@@ -245,7 +376,45 @@
     emojiGrid.appendChild(btn);
   });
 
+
+  // ── 식사 시간 버튼 생성 ──
+  const timeGrid = document.getElementById("time-grid");
+  const timeInputWrap = document.getElementById("time-input-wrap");
+  const timeInput = document.getElementById("time-input");
+
+  function syncTimeUI() {
+    timeInputWrap.style.display = mealTime === "early" ? "block" : "none";
+  }
+
+  MEAL_TIMES.forEach(({ label, value }) => {
+    const btn = document.createElement("button");
+    btn.className = `time-btn ${value === mealTime ? "selected" : ""}`;
+    btn.textContent = label;
+    btn.onclick = () => {
+      document.querySelectorAll(".time-btn").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      mealTime = value;
+      if (mealTime === "regular") {
+        meetTime = DEFAULT_MEET_TIME;
+      } else {
+        meetTime = timeInput.value || "11:40";
+      }
+      syncTimeUI();
+      sendUpdate();
+    };
+    timeGrid.appendChild(btn);
+  });
+
+  timeInput.addEventListener("input", () => {
+    if (mealTime === "early") {
+      meetTime = timeInput.value || "11:40";
+      sendUpdate();
+    }
+  });
+
   // ── 식당 버튼 생성 ──
+  syncTimeUI();
+
   const restGrid = document.getElementById("restaurant-grid");
   RESTAURANTS.forEach(r => {
     const btn = document.createElement("button");
@@ -255,24 +424,37 @@
       document.querySelectorAll(".rest-btn").forEach(b => b.classList.remove("selected"));
       btn.classList.add("selected");
       restaurant = r;
+      customPlace = "";
+      document.getElementById("custom-place-input").value = "";
       sendUpdate();
     };
     restGrid.appendChild(btn);
   });
 
   function updateJoinBtn() {
-    const name = document.getElementById("name-input").value.trim();
+    const name = getChosenName();
     document.getElementById("join-btn").disabled = !(name && myEmoji);
   }
 
   // ── IME 안전한 Enter 처리 ──
   // isComposing 대신 compositionstart/end 직접 추적 (브라우저 호환성 문제 회피)
-  const nameInput = document.getElementById("name-input");
   nameInput.addEventListener("compositionstart", () => composing = true);
   nameInput.addEventListener("compositionend",   () => composing = false);
   nameInput.addEventListener("input", updateJoinBtn);
   nameInput.addEventListener("keydown", e => {
     if (e.key === "Enter" && !composing) joinApp();
+  });
+
+  const customPlaceInput = document.getElementById("custom-place-input");
+  customPlaceInput.addEventListener("compositionstart", () => composing = true);
+  customPlaceInput.addEventListener("compositionend",   () => composing = false);
+  customPlaceInput.addEventListener("input", () => {
+    customPlace = customPlaceInput.value.trim();
+    if (customPlace) {
+      restaurant = "";
+      document.querySelectorAll(".rest-btn").forEach(b => b.classList.remove("selected"));
+    }
+    sendUpdate();
   });
 
   const menuInput = document.getElementById("menu-input");
@@ -282,7 +464,7 @@
 
   // ── 입장 ──
   function joinApp() {
-    const name = nameInput.value.trim();
+    const name = getChosenName();
     if (!name || !myEmoji) return;
     myName = name;
 
@@ -299,14 +481,23 @@
     if (going) {
       btn.textContent = "✅ 오장!";
       btn.className = "going";
+      document.getElementById("time-section").style.display = "block";
       document.getElementById("restaurant-section").style.display = "block";
       document.getElementById("menu-section").style.display = "block";
     } else {
       btn.textContent = "❌ 안 가";
       btn.className = "notgoing";
+      document.getElementById("time-section").style.display = "none";
       document.getElementById("restaurant-section").style.display = "none";
       document.getElementById("menu-section").style.display = "none";
+      mealTime = "regular";
+      meetTime = DEFAULT_MEET_TIME;
+      timeInput.value = "11:40";
+      syncTimeUI();
       restaurant = "";
+      customPlace = "";
+      document.getElementById("custom-place-input").value = "";
+      document.querySelectorAll(".time-btn").forEach((b, idx) => b.classList.toggle("selected", idx === 0));
       document.querySelectorAll(".rest-btn").forEach(b => b.classList.remove("selected"));
     }
     sendUpdate();
@@ -316,7 +507,10 @@
   function sendUpdate() {
     socket.emit("update", {
       going,
+      meal_time: mealTime,
+      meet_time: meetTime,
       restaurant,
+      custom_place: customPlace,
       menu: document.getElementById("menu-input").value.trim(),
     });
   }
@@ -337,9 +531,15 @@
       const li = document.createElement("li");
       li.className = "player-card";
 
+      const place = p.restaurant || p.custom_place || "";
+      const meetTimeLabel = p.meet_time || (p.meal_time === "early" ? "시간 미정" : DEFAULT_MEET_TIME);
+      const mealTimeLabel = p.meal_time === "early"
+        ? `조금 일찍 (${meetTimeLabel})`
+        : `평소 11:50 (오장)`;
       const detail = [
-        p.going && p.restaurant ? p.restaurant : null,
-        p.going && p.menu       ? p.menu       : null,
+        p.going ? mealTimeLabel : null,
+        p.going && place ? place : null,
+        p.going && p.menu ? p.menu : null,
       ].filter(Boolean).join(" · ") || "";
 
       li.innerHTML = `
