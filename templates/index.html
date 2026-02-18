@@ -44,6 +44,26 @@
       text-align: center;
     }
 
+    .name-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .name-btn {
+      padding: 10px 6px;
+      font-size: 0.9rem;
+      background: #f5f5f5;
+      border: 2px solid transparent;
+      border-radius: 10px;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .name-btn.selected { border-color: #4a90e2; background: #e8f0fc; font-weight: bold; }
+
+    #name-input-wrap { display: none; }
+
     .emoji-grid {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
@@ -219,7 +239,15 @@
 <!-- 로비 -->
 <div id="lobby">
   <h2>🍱 오늘 오장?</h2>
-  <input id="name-input" type="text" placeholder="닉네임 입력" maxlength="12" />
+  <div>
+    <div class="section-title" style="margin-bottom:8px">이름 선택</div>
+    <div class="name-grid" id="name-grid">
+      <!-- JS로 생성 -->
+    </div>
+  </div>
+  <div id="name-input-wrap">
+    <input id="name-input" type="text" placeholder="그 외 인물 이름 입력" maxlength="12" />
+  </div>
   <div>
     <div class="section-title" style="margin-bottom:8px">캐릭터 선택</div>
     <div class="emoji-grid" id="emoji-grid">
@@ -278,6 +306,8 @@
 
 <script>
   const socket = io();
+  const PRESET_NAMES = ["은송", "영은", "무연"];
+  const CUSTOM_NAME_VALUE = "__custom__";
   const EMOJIS = ["🐱","🐶","🐹","🐻","🦊","🐸","🐼","🦁","🐯","🐧"];
   const DEFAULT_MEET_TIME = "11:50"; // 평소(오장) 시간
   const MEAL_TIMES = [
@@ -287,6 +317,7 @@
   const RESTAURANTS = ["투게더홀","패밀리홀","R3","R4","R5"];
 
   let myName = "";
+  let selectedName = "";
   let myEmoji = "";
   let going = false;
   let mealTime = "regular";
@@ -294,6 +325,41 @@
   let restaurant = "";
   let customPlace = "";
   let composing = false;  // IME 조합 상태 직접 추적
+
+  // ── 이름 버튼 생성 ──
+  const nameGrid = document.getElementById("name-grid");
+  const nameInputWrap = document.getElementById("name-input-wrap");
+  const nameInput = document.getElementById("name-input");
+
+  function updateNameUI() {
+    nameInputWrap.style.display = selectedName === CUSTOM_NAME_VALUE ? "block" : "none";
+  }
+
+  function getChosenName() {
+    if (selectedName === CUSTOM_NAME_VALUE) return nameInput.value.trim();
+    return selectedName;
+  }
+
+  [...PRESET_NAMES, "직접 입력"].forEach(name => {
+    const isCustom = name === "직접 입력";
+    const value = isCustom ? CUSTOM_NAME_VALUE : name;
+    const btn = document.createElement("button");
+    btn.className = "name-btn";
+    btn.textContent = name;
+    btn.onclick = () => {
+      document.querySelectorAll(".name-btn").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      selectedName = value;
+      if (!isCustom) {
+        nameInput.value = "";
+      }
+      updateNameUI();
+      updateJoinBtn();
+    };
+    nameGrid.appendChild(btn);
+  });
+
+  updateNameUI();
 
   // ── 이모지 버튼 생성 ──
   const emojiGrid = document.getElementById("emoji-grid");
@@ -366,13 +432,12 @@
   });
 
   function updateJoinBtn() {
-    const name = document.getElementById("name-input").value.trim();
+    const name = getChosenName();
     document.getElementById("join-btn").disabled = !(name && myEmoji);
   }
 
   // ── IME 안전한 Enter 처리 ──
   // isComposing 대신 compositionstart/end 직접 추적 (브라우저 호환성 문제 회피)
-  const nameInput = document.getElementById("name-input");
   nameInput.addEventListener("compositionstart", () => composing = true);
   nameInput.addEventListener("compositionend",   () => composing = false);
   nameInput.addEventListener("input", updateJoinBtn);
@@ -399,7 +464,7 @@
 
   // ── 입장 ──
   function joinApp() {
-    const name = nameInput.value.trim();
+    const name = getChosenName();
     if (!name || !myEmoji) return;
     myName = name;
 
