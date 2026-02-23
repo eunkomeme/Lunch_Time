@@ -195,6 +195,38 @@
     /* 메뉴 입력 */
     #menu-section { display: none; }
 
+    .meal-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .meal-tab {
+      flex: 1;
+      padding: 7px 4px;
+      font-size: 0.8rem;
+      background: #f0f0f0;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .meal-tab.active {
+      border-color: #4a90e2;
+      background: #e8f0fc;
+      font-weight: bold;
+    }
+
+    #menu-select {
+      width: 100%;
+      padding: 11px;
+      border: 1.5px solid #ddd;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      outline: none;
+      background: white;
+      cursor: pointer;
+    }
+
     #menu-input {
       width: 100%;
       padding: 11px;
@@ -202,6 +234,13 @@
       border-radius: 10px;
       font-size: 0.95rem;
       outline: none;
+    }
+
+    .menu-loading {
+      text-align: center;
+      color: #aaa;
+      font-size: 0.85rem;
+      padding: 10px 0;
     }
 
     /* 참가자 목록 */
@@ -293,6 +332,18 @@
   <!-- 메뉴 입력 -->
   <div class="section" id="menu-section">
     <div class="section-title">오늘 메뉴</div>
+    <!-- 식사 구분 탭 (API 지원 식당) -->
+    <div class="meal-tabs" id="meal-tabs" style="display:none">
+      <button class="meal-tab" data-meal="breakfast">아침</button>
+      <button class="meal-tab" data-meal="lunch">점심</button>
+      <button class="meal-tab" data-meal="dinner">저녁</button>
+    </div>
+    <!-- 드롭다운 (API 지원 식당) -->
+    <div class="menu-loading" id="menu-loading" style="display:none">메뉴 불러오는 중...</div>
+    <select id="menu-select" style="display:none" onchange="onMenuSelect()">
+      <option value="">메뉴 선택...</option>
+    </select>
+    <!-- 텍스트 입력 (폴백 / 패밀리홀 등) -->
     <input id="menu-input" type="text" placeholder="ex) 김치찌개, 파스타..." maxlength="30" />
   </div>
 
@@ -316,6 +367,14 @@
   ];
   const RESTAURANTS = ["투게더홀","패밀리홀","R3","R4","R5"];
 
+  // 식당명 → API 키 매핑 (없으면 수동 입력 폴백)
+  const RESTAURANT_API_KEYS = {
+    "투게더홀": "together",
+    "R3": "r3",
+    "R4": "r4",
+    "R5": "r5",
+  };
+
   let myName = "";
   let selectedName = "";
   let myEmoji = "";
@@ -325,6 +384,16 @@
   let restaurant = "";
   let customPlace = "";
   let composing = false;  // IME 조합 상태 직접 추적
+  let currentMeal = "lunch";
+  let menuData    = null;  // { breakfast: [...], lunch: [...], dinner: [...] }
+
+  // ── 현재 시각 기반 식사 구분 ──
+  function getMealByTime() {
+    const h = new Date().getHours();
+    if (h < 10) return "breakfast";
+    if (h < 15) return "lunch";
+    return "dinner";
+  }
 
   // ── 이름 버튼 생성 ──
   const nameGrid = document.getElementById("name-grid");
@@ -420,16 +489,108 @@
     const btn = document.createElement("button");
     btn.className = "rest-btn";
     btn.textContent = r;
-    btn.onclick = () => {
+    btn.onclick = async () => {
       document.querySelectorAll(".rest-btn").forEach(b => b.classList.remove("selected"));
       btn.classList.add("selected");
       restaurant = r;
       customPlace = "";
       document.getElementById("custom-place-input").value = "";
+
+      const apiKey = RESTAURANT_API_KEYS[r];
+      if (apiKey) {
+        await loadMenu(apiKey);
+      } else {
+        showTextInput();
+      }
       sendUpdate();
     };
     restGrid.appendChild(btn);
   });
+
+  // ── 식사 탭 이벤트 ──
+  document.querySelectorAll(".meal-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".meal-tab").forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      currentMeal = tab.dataset.meal;
+      updateMenuOptions();
+    });
+  });
+
+  // ── 메뉴 API 로드 ──
+  async function loadMenu(apiKey) {
+    const today = new Date();
+    const dateStr = today.getFullYear().toString()
+      + String(today.getMonth() + 1).padStart(2, "0")
+      + String(today.getDate()).padStart(2, "0");
+
+    showLoading();
+    try {
+      const resp = await fetch(`/api/menus?restaurant=${apiKey}&date=${dateStr}`);
+      if (!resp.ok) { showTextInput(); return; }
+      menuData = (await resp.json()).meals;
+      currentMeal = getMealByTime();
+      showDropdown();
+    } catch {
+      showTextInput();
+    }
+  }
+
+  function showLoading() {
+    document.getElementById("meal-tabs").style.display   = "none";
+    document.getElementById("menu-loading").style.display = "block";
+    document.getElementById("menu-select").style.display  = "none";
+    document.getElementById("menu-input").style.display   = "none";
+  }
+
+  function showDropdown() {
+    // 식사 탭 활성 탭 동기화
+    document.querySelectorAll(".meal-tab").forEach(t => {
+      t.classList.toggle("active", t.dataset.meal === currentMeal);
+    });
+    document.getElementById("meal-tabs").style.display    = "flex";
+    document.getElementById("menu-loading").style.display = "none";
+    document.getElementById("menu-select").style.display  = "block";
+    document.getElementById("menu-input").style.display   = "none";
+    updateMenuOptions();
+  }
+
+  function showTextInput() {
+    menuData = null;
+    document.getElementById("meal-tabs").style.display    = "none";
+    document.getElementById("menu-loading").style.display = "none";
+    document.getElementById("menu-select").style.display  = "none";
+    document.getElementById("menu-input").style.display   = "block";
+  }
+
+  function updateMenuOptions() {
+    const sel   = document.getElementById("menu-select");
+    const items = menuData?.[currentMeal] ?? [];
+    sel.innerHTML = '<option value="">메뉴 선택...</option>';
+    items.forEach(item => {
+      const opt = document.createElement("option");
+      opt.value = item;
+      opt.textContent = item;
+      sel.appendChild(opt);
+    });
+    if (items.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "등록된 메뉴가 없습니다";
+      opt.disabled = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  function onMenuSelect() { sendUpdate(); }
+
+  // ── 현재 메뉴 값 가져오기 ──
+  function getMenuValue() {
+    const sel = document.getElementById("menu-select");
+    const inp = document.getElementById("menu-input");
+    if (sel.style.display !== "none") return sel.value;
+    return inp.value.trim();
+  }
 
   function updateJoinBtn() {
     const name = getChosenName();
@@ -469,7 +630,7 @@
     myName = name;
 
     document.getElementById("lobby").style.display = "none";
-    document.getElementById("main").style.display = "block";
+    document.getElementById("main").style.display  = "block";
 
     socket.emit("join", { name: myName, emoji: myEmoji });
   }
@@ -483,7 +644,7 @@
       btn.className = "going";
       document.getElementById("time-section").style.display = "block";
       document.getElementById("restaurant-section").style.display = "block";
-      document.getElementById("menu-section").style.display = "block";
+      document.getElementById("menu-section").style.display       = "block";
     } else {
       btn.textContent = "❌ 안 가";
       btn.className = "notgoing";
@@ -496,9 +657,11 @@
       syncTimeUI();
       restaurant = "";
       customPlace = "";
+      menuData = null;
       document.getElementById("custom-place-input").value = "";
       document.querySelectorAll(".time-btn").forEach((b, idx) => b.classList.toggle("selected", idx === 0));
       document.querySelectorAll(".rest-btn").forEach(b => b.classList.remove("selected"));
+      showTextInput();
     }
     sendUpdate();
   }
@@ -511,13 +674,13 @@
       meet_time: meetTime,
       restaurant,
       custom_place: customPlace,
-      menu: document.getElementById("menu-input").value.trim(),
+      menu: getMenuValue(),
     });
   }
 
   // ── 참가자 목록 수신 ──
   socket.on("player_list", ({ players }) => {
-    const list = document.getElementById("player-list");
+    const list  = document.getElementById("player-list");
     const empty = document.getElementById("empty-msg");
     list.innerHTML = "";
 
