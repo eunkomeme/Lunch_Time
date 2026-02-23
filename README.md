@@ -1,94 +1,107 @@
-# 🍱 오늘 오장? (Lunch Sync)
+# 🍱 오늘 오장?
 
-> A real-time lunch coordination app built for a small team at Samsung Electronics Suwon campus.
+> 삼성전자 수원 캠퍼스 소규모 팀을 위한 실시간 점심 조율 앱
 
-Instead of juggling KakaoTalk messages every day — *"Are you going to lunch?" "Which cafeteria?" "What time?"* — this app lets teammates see each other's lunch status at a glance and sync up instantly.
+매일 카카오톡에서 반복되는 "오늘 오장?", "어느 식당?", "몇 시에?" 대신,
+팀원들의 점심 현황을 한눈에 보고 바로 조율할 수 있습니다.
 
 🔗 **Live Demo:** https://bit.ly/ojang
-🚀 **Deployed on:** Railway
+🚀 **배포:** Railway
 
 ---
 
-## ✨ Features
+## ✨ 주요 기능
 
-- **Real-time presence** — join/leave status syncs instantly across all connected clients via WebSocket
-- **Cafeteria menu lookup** — automatically fetches today's menus from internal cafeteria APIs (no manual entry needed)
-- **Smart meal tab** — auto-selects breakfast / lunch / dinner based on current time
-- **Preset names & custom entry** — quick-select for regulars, open input for guests
-- **Meal time selection** — choose between the usual 11:50 or set a custom time
-- **Custom venue input** — for days when the team goes somewhere off-campus
-- **Graceful fallback** — cafeterias without an API (e.g. 패밀리홀) fall back to free-text input
+- **실시간 접속 상태** — Socket.IO로 참가/이탈 상태가 모든 클라이언트에 즉시 동기화
+- **식당 메뉴 자동 조회** — 구내식당 API에서 오늘의 메뉴를 자동으로 불러옴 (수동 입력 불필요)
+- **식사 구분 탭 자동 선택** — 현재 시각 기준으로 아침 / 점심 / 저녁 탭 자동 활성화
+- **이름 프리셋 + 직접 입력** — 고정 멤버는 버튼 한 번, 그 외는 자유 입력
+- **식사 시간 선택** — 평소 11:50 고정 또는 원하는 시간 직접 설정
+- **커스텀 장소 입력** — 외부 식당 등 캠퍼스 밖 장소로 이동할 때
+- **Fallback 처리** — 공개 API가 없는 식당(패밀리홀 등)은 자유 텍스트 입력으로 대체
 
 ---
 
-## 🛠 Tech Stack
+## 🛠 기술 스택
 
-| Layer | Technology |
+| 항목 | 기술 |
 |---|---|
 | Language | Python 3 |
 | Backend | Flask + Flask-SocketIO |
 | Async runtime | eventlet |
 | Production server | Gunicorn |
-| Real-time transport | WebSocket (Socket.IO) |
-| External APIs | Samsung Welstory, CJ프레시밀 |
-| Caching | In-memory dict with 1-hour TTL |
-| Deployment | Railway |
+| 실시간 통신 | WebSocket (Socket.IO) |
+| 외부 API | 삼성웰스토리, CJ프레시밀 |
+| 캐싱 | In-memory dict (TTL 1시간) |
+| 배포 | Railway |
 | Frontend | HTML, CSS, Vanilla JS |
 
 ---
 
-## 🔌 Menu API Integration
+## 🔌 식단 자동 연동
 
-Two cafeteria data sources are integrated:
+### 식당별 연동 현황
 
-**Samsung Welstory** (R3 / R4 / R5)
-- Endpoint: `POST /menu/getSuwonMenuList.do`
-- Filters by `first_row_yn=Y` to return only set-meal representative items
-- Returns breakfast / lunch / dinner menus per hall
+| 식당 | 데이터 소스 | 연동 방식 | 비고 |
+|---|---|---|---|
+| 투게더홀 | CJ프레시밀 | REST API | storeIdx=6413 |
+| R3 | 삼성웰스토리 | REST API | POST, first_row_yn=Y 필터 |
+| R4 | 삼성웰스토리 | REST API | POST, first_row_yn=Y 필터 |
+| R5 | 삼성웰스토리 | REST API | POST, first_row_yn=Y 필터 |
+| 패밀리홀 | 없음 (신세계푸드) | 직접 입력 fallback | 앱 전용, 공개 API 없음 |
 
-**CJ프레시밀** (투게더홀)
-- Endpoint: `GET /meal/v1/today-all-meal?storeIdx=6413`
-- `storeIdx` was discovered via the `near-store` API using the campus GPS coordinates
-- Returns per-corner menu items with corner labels
+### API 탐색 과정
 
-Both sources are cached for 1 hour to avoid redundant API calls.
+공식 문서나 오픈 API가 없어 직접 탐색이 필요했습니다.
 
----
+**투게더홀 (CJ프레시밀)**
+`storeIdx`를 알 수 없어 CJ프레시밀의 `near-store` API에 캠퍼스 GPS 좌표(37.2646, 127.0289)를 전달해 `storeIdx=6413`을 발굴했습니다.
 
-## ⚙️ How It Works
+**삼성웰스토리 (R3/R4/R5)**
+응답 Content-Type이 EUC-KR일 것으로 예상했으나 실제로는 UTF-8이었고, `r.json()`으로 바로 파싱했습니다.
+R3 기준 메뉴 항목이 328개로 과다 조회되어 `first_row_yn=Y` 필터를 적용, 세트 대표 메뉴만 추출했습니다 (점심 기준 약 24개).
 
-```
-Client A changes status
-  → emits "update" via Socket.IO
-    → server updates in-memory state
-      → broadcasts "player_list" to all clients
-        → every connected browser re-renders instantly
-```
-
-No database. State lives in a Python dict for the duration of the server process — intentional for a lightweight, ephemeral use case.
+**캐싱**
+동일 날짜 중복 API 호출 방지를 위해 1시간 TTL 인메모리 캐시를 적용했습니다.
 
 ---
 
-## 📂 Project Structure
+## ⚙️ 동작 방식
+
+```
+클라이언트 A가 상태 변경
+  → "update" 이벤트를 Socket.IO로 전송
+    → 서버가 in-memory 상태 업데이트
+      → "player_list"를 모든 클라이언트에 브로드캐스트
+        → 연결된 모든 브라우저가 즉시 리렌더링
+```
+
+데이터베이스는 사용하지 않았습니다.
+상태는 서버 프로세스가 살아있는 동안 Python dict에 보관되며, 재시작 시 초기화됩니다.
+경량 일시적 사용 목적에 맞춰 의도적으로 설계한 구조입니다.
+
+---
+
+## 📂 프로젝트 구조
 
 ```
 .
-├── server.py          # Flask app, SocketIO handlers, menu API fetchers
+├── server.py          # Flask 앱, SocketIO 핸들러, 메뉴 API fetcher
 ├── requirements.txt
 └── templates/
-    └── index.html     # Single-page frontend (HTML + CSS + Vanilla JS)
+    └── index.html     # 단일 페이지 프론트엔드 (HTML + CSS + Vanilla JS)
 ```
 
 ---
 
-## 🚀 Run Locally
+## 🚀 로컬 실행
 
 ```bash
 pip install -r requirements.txt
 python server.py
 ```
 
-Or with Gunicorn:
+또는 Gunicorn:
 
 ```bash
 gunicorn -k eventlet -w 1 server:app
@@ -96,6 +109,8 @@ gunicorn -k eventlet -w 1 server:app
 
 ---
 
-## 📎 Notes
+## 📎 참고
 
-Built for a real use case with a team of ~3 people. Intentionally minimal — the goal was to solve a specific daily friction point, not to over-engineer it. Focus was on real-time sync and API integration rather than persistence or auth.
+실제 팀 3명이 매일 사용하는 환경에서 만든 프로젝트입니다.
+기능을 최소화하되, 실시간 동기화와 API 연동에 집중했습니다.
+인증이나 영구 저장보다, 매일 반복되는 작은 불편을 제거하는 것이 목표였습니다.
