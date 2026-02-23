@@ -1,51 +1,71 @@
-# 🍽 Lunch Time
+# 🍱 오늘 오장? (Lunch Sync)
 
-회사 동기들끼리 점심 약속을 조율하기 위해 만든 간단한 웹 서비스입니다.
+> A real-time lunch coordination app built for a small team at Samsung Electronics Suwon campus.
 
-오늘 점심에 참여 가능한 사람을 확인하고,  
-식당과 시간을 정할 수 있도록 도와줍니다.
+Instead of juggling KakaoTalk messages every day — *"Are you going to lunch?" "Which cafeteria?" "What time?"* — this app lets teammates see each other's lunch status at a glance and sync up instantly.
 
-🔗 Live Demo: https://bit.ly/ojang <br> 
-🚀 Deployed on Railway  
+🔗 **Live Demo:** https://bit.ly/ojang
+🚀 **Deployed on:** Railway
 
 ---
 
-## 📌 What This Project Does
+## ✨ Features
 
-- 점심 참여 가능 여부 체크
-- 개인 일정 있는 사람 표시
-- 현재 참여 인원 확인
-- 식당 선택 공유
-- 실시간 상태 반영
-
-소규모 인원이 동시에 접속해 사용하는 것을 전제로 만들었습니다.
+- **Real-time presence** — join/leave status syncs instantly across all connected clients via WebSocket
+- **Cafeteria menu lookup** — automatically fetches today's menus from internal cafeteria APIs (no manual entry needed)
+- **Smart meal tab** — auto-selects breakfast / lunch / dinner based on current time
+- **Preset names & custom entry** — quick-select for regulars, open input for guests
+- **Meal time selection** — choose between the usual 11:50 or set a custom time
+- **Custom venue input** — for days when the team goes somewhere off-campus
+- **Graceful fallback** — cafeterias without an API (e.g. 패밀리홀) fall back to free-text input
 
 ---
 
 ## 🛠 Tech Stack
 
-| 항목 | 기술 |
-|------|------|
+| Layer | Technology |
+|---|---|
 | Language | Python 3 |
-| Backend Framework | Flask |
-| Real-time Communication | Flask-SocketIO |
-| Async Mode | eventlet |
-| Production Server | Gunicorn |
-| Data Storage | In-memory (Python dict) |
+| Backend | Flask + Flask-SocketIO |
+| Async runtime | eventlet |
+| Production server | Gunicorn |
+| Real-time transport | WebSocket (Socket.IO) |
+| External APIs | Samsung Welstory, CJ프레시밀 |
+| Caching | In-memory dict with 1-hour TTL |
 | Deployment | Railway |
-| Frontend | HTML, CSS, Vanilla JavaScript |
+| Frontend | HTML, CSS, Vanilla JS |
+
+---
+
+## 🔌 Menu API Integration
+
+Two cafeteria data sources are integrated:
+
+**Samsung Welstory** (R3 / R4 / R5)
+- Endpoint: `POST /menu/getSuwonMenuList.do`
+- Filters by `first_row_yn=Y` to return only set-meal representative items
+- Returns breakfast / lunch / dinner menus per hall
+
+**CJ프레시밀** (투게더홀)
+- Endpoint: `GET /meal/v1/today-all-meal?storeIdx=6413`
+- `storeIdx` was discovered via the `near-store` API using the campus GPS coordinates
+- Returns per-corner menu items with corner labels
+
+Both sources are cached for 1 hour to avoid redundant API calls.
 
 ---
 
 ## ⚙️ How It Works
 
-- Flask 서버에서 기본 라우팅 처리
-- Flask-SocketIO로 사용자 상태를 실시간 공유
-- 서버 메모리(dict)에 현재 참여 상태 저장
-- 상태 변경 시 모든 클라이언트에 즉시 반영
+```
+Client A changes status
+  → emits "update" via Socket.IO
+    → server updates in-memory state
+      → broadcasts "player_list" to all clients
+        → every connected browser re-renders instantly
+```
 
-데이터베이스는 사용하지 않았으며,  
-서버가 재시작되면 데이터는 초기화됩니다.
+No database. State lives in a Python dict for the duration of the server process — intentional for a lightweight, ephemeral use case.
 
 ---
 
@@ -53,30 +73,29 @@
 
 ```
 .
-├── app.py
+├── server.py          # Flask app, SocketIO handlers, menu API fetchers
 ├── requirements.txt
-├── templates/
-├── static/
+└── templates/
+    └── index.html     # Single-page frontend (HTML + CSS + Vanilla JS)
 ```
 
 ---
 
 ## 🚀 Run Locally
 
-```
+```bash
 pip install -r requirements.txt
-python app.py
+python server.py
 ```
 
-또는
+Or with Gunicorn:
 
-```
-gunicorn -k eventlet -w 1 app:app
+```bash
+gunicorn -k eventlet -w 1 server:app
 ```
 
 ---
 
 ## 📎 Notes
 
-이 프로젝트는 소규모 그룹의 간단한 일정 조율을 목적으로 제작되었습니다.  
-기능을 최소화하고 실시간 동기화 구현에 초점을 맞추었습니다.
+Built for a real use case with a team of ~3 people. Intentionally minimal — the goal was to solve a specific daily friction point, not to over-engineer it. Focus was on real-time sync and API integration rather than persistence or auth.
